@@ -1,0 +1,9 @@
+{
+  "name": "pcs-promo-parser",
+  "version": "0.2.0",
+  "description": "Parse vendor promo decks (Milwaukee, DeWalt, Makita, Bosch, EGO, Flex, GearWrench, Crescent) into PCS Kit Builder Stage 1 CSVs. Handles kit promos, NLP price drops, and exclusions including RSA, POS Redemption, and ARP. Outputs brand-quarter-year prefixed files ready for Stage 2/3/4.",
+  "author": {
+    "name": "PCS Tools"
+  },
+  "keywords": ["promo", "kit-builder", "dewalt", "milwaukee", "makita"]
+}
