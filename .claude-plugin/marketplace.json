@@ -1,7 +1,7 @@
 {
-  "name": "pcs-tools",
+  "name": "pcs-plugins",
   "owner": {
-    "name": "PCS Tools",
+    "name": "PCS Plugins",
     "email": "nathan.harris@pcstools.com"
   },
   "description": "PCS Tools internal Claude plugins for the Kit Builder workflow",
