@@ -89,11 +89,32 @@ Subset of SPECIAL_BUY_MARKER specifically for the `NLP` acronym and
 
 ---
 
-## RSA_MARKER → `non_included` reason `rsa`
+## RSA_MARKER → dedicated RSA outputs (NOT `non_included`)
 
 RSA (Retail Sales Associate) incentive programs reward store associates
-for selling specific products. These are associate-facing, not
-customer-facing promos — do not kit them.
+for selling specific products. These are associate-facing programs that
+typically include **credit amounts** the associate earns per sale.
+
+**Routing change (v0.3.0)**: RSA pages no longer route to
+`non_included.csv`. They now route to **dedicated RSA outputs** because
+the team needs the credit amounts surfaced and manually reviewed:
+
+- **Kit-shaped RSA promos** (anchor + free good, or "earn $X per kit
+  sold" with a fixed SKU pairing) → `RSA-Kits.csv`. Same 27-column
+  schema as `promo_list.csv`. Populate `Item Credit N` columns with the
+  RSA credit amount.
+- **Single-SKU RSA promos** (associate earns credit per unit of a single
+  SKU, no pairing) → `RSA-NLP.csv`. Same 9-column schema as
+  `nlp_sheet.csv` plus a 10th `Credit Amount` column appended at the
+  right.
+
+**Promo Name suffix**: every row emitted to either RSA file gets `-RSA`
+appended to its `Promo Name` cell so downstream consumers can spot RSA
+rows even after the files are merged. Example:
+- Source title: `"M18 Drill RSA Reward [P-00xxxxx]"`
+- Emitted Promo Name: `"M18 Drill RSA Reward [P-00xxxxx]-RSA"`
+
+No SKU prefixing — the `-RSA` suffix lives on `Promo Name` only.
 
 ### Phrases (case-insensitive)
 
@@ -110,18 +131,77 @@ customer-facing promos — do not kit them.
 - "Retail Sales Associate Incentive Program"
 - "RSA: Earn $10 per kit sold"
 
+### Credit-amount extraction
+
+Look for dollar amounts adjacent to RSA language in any of these forms:
+
+- `Earn $N per (kit|unit|sale)` → credit = `$N`
+- `RSA Reward: $N` → credit = `$N`
+- A `Credit` or `Incentive` column in the price table → use that value
+- `$N back to associate`, `$N spiff per sold` (when paired with RSA
+  language, not standalone SPIFF) → credit = `$N`
+
+Populate the matching `Item Credit N` slot for each row. If the credit
+amount is genuinely unextractable, emit the row with a blank credit
+cell — the team fills in manually.
+
 ### Traps
 
 - `RSA` embedded inside a model number or SKU (e.g. `RSAB123`) is NOT
   this marker. Match only when `RSA` appears as a standalone label,
   section header, or badge.
-- A page that contains BOTH an RSA reward section AND a valid B1G1 kit
-  table should be classified as a **kit page** (priority #9), not `rsa`.
-  The kit deal is customer-facing and still needs to be extracted. Emit
-  a separate `non_included` row for the RSA section only if there are
-  RSA-specific SKUs that are not part of the B1G1 deal.
-- An entire page dedicated exclusively to RSA programming (no B1G1
-  panel, no customer promo price table) → `non_included` reason `rsa`.
+- A page that contains BOTH an RSA reward section AND a separate
+  customer-facing B1G1 kit table → emit the **customer kit rows** to
+  `promo_list.csv` as normal AND emit the **RSA section rows** to
+  `RSA-Kits.csv` / `RSA-NLP.csv`. Both paths run; they're not
+  mutually exclusive on mixed pages.
+- An entire page dedicated exclusively to RSA programming → all
+  extracted rows go to `RSA-Kits.csv` or `RSA-NLP.csv` per shape. Do
+  NOT emit a `non_included` row with reason `rsa` — that routing is
+  retired as of v0.3.0.
+
+---
+
+## NEW_PRODUCT_MARKER → `non_included` reason `new-product`
+
+Pages or sections highlighting **new product launches** are vendor
+announcements, not promos. The team has decided these should be skipped
+entirely — they're not eligible for kit-builder processing.
+
+### Phrases (case-insensitive)
+
+- `New Product`, `New Products`
+- `New Product Launch`, `New Product Launches`
+- `Product Launch`, `Launch Page`
+- `New Arrival`, `New Arrivals`
+- `New Release`, `Just Launched`, `Now Available`
+- `NEW!` when adjacent to "Product", "Launch", "Tool", "Item", or
+  "Arrival" (the bare `NEW!` badge on a promo page is NOT enough — it
+  must be in a launch/product context)
+- `Coming Soon`, `Available [Month YYYY]` when paired with a launch
+  banner
+
+### Real-world examples that should match
+
+- A page titled "Q2 New Product Launches" listing 6 new SKUs
+- A "New Arrivals" section header above a SKU list
+- "NEW! Product Launch — DCS390B available 5/1/2026"
+
+### Routing
+
+Emit one `non_included` row per page (with the page's primary SKU if
+extractable, blank otherwise). Reason code: `new-product`. Do **not**
+emit kit, NLP, or RSA rows from a new-product page — skip the page
+entirely after recording the exclusion.
+
+### Traps
+
+- A normal promo page that incidentally calls out one "NEW" tool as the
+  free good is NOT a new-product page. The marker must apply to the
+  whole page or a clearly bounded section header.
+- "New Lower Price" (NLP) is NOT this marker — that's NLP_MARKER (Step
+  4 case #7) which routes to the NLP Sheet, not `non_included`. Match
+  NLP first.
 
 ---
 

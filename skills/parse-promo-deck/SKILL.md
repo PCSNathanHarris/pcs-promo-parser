@@ -1,6 +1,6 @@
 ---
 name: parse-promo-deck
-description: Parse a vendor promo deck (PDF, PNG, or JPG) end-to-end into the PCS Kit Builder Stage 1 output CSVs — promo_list.csv, non_included.csv, nlp_sheet.csv, parser_audit.csv. Use whenever the user supplies a Milwaukee, DeWalt, Makita, Bosch, EGO, Flex, GearWrench, or Crescent promo deck and asks to parse it, extract kits, build a Promo List, generate Stage 1 outputs, or process a vendor flyer.
+description: Parse a vendor promo deck (PDF, PNG, or JPG) end-to-end into the PCS Kit Builder Stage 1 output CSVs — Promo-List, Non-Included, NLP-Sheet, Parser-Audit, plus the v0.3.0 outputs RSA-Kits, RSA-NLP, and (Makita) Needs-Pricing. Use whenever the user supplies a Milwaukee, DeWalt, Makita, Bosch, EGO, Flex, GearWrench, or Crescent promo deck and asks to parse it, extract kits, build a Promo List, generate Stage 1 outputs, or process a vendor flyer.
 allowed-tools: Read, Write, Glob, Bash
 ---
 
@@ -94,13 +94,17 @@ For a multi-page deck:
 - For a single image (`.png` / `.jpg` / `.jpeg`), one Read call covers
   the whole input.
 
-Process pages incrementally as you read them. Maintain four cumulative
+Process pages incrementally as you read them. Maintain these cumulative
 in-context lists:
 
-- `promo_rows` — kit-promo Cartesian rows for `promo_list.csv`
-- `nlp_rows` — single-SKU price-drop rows for `nlp_sheet.csv`
-- `non_included` — excluded SKUs/pages for `non_included.csv`
-- `audit_counters` — page-type counts for `parser_audit.csv`
+- `promo_rows` — kit-promo Cartesian rows for `Promo-List.csv`
+- `nlp_rows` — single-SKU price-drop rows for `NLP-Sheet.csv`
+- `non_included` — excluded SKUs/pages for `Non-Included.csv`
+- `rsa_kit_rows` — RSA kit-shaped rows for `RSA-Kits.csv` (v0.3.0)
+- `rsa_nlp_rows` — RSA single-SKU rows for `RSA-NLP.csv` (v0.3.0)
+- `needs_pricing_rows` — Makita paid SKUs with no extractable price across
+  any tier, for `Needs-Pricing.csv` (v0.3.0; Makita only)
+- `audit_counters` — page-type counts for `Parser-Audit.csv`
 
 ### Step 4 — Per-page classification
 
@@ -110,7 +114,11 @@ For every page, apply the decision tree in
 1. **Killed / strikethrough entire panel** → `non_included` reason `killed`
 2. **Brick-and-mortar / in-store-only** → `non_included` reason `brick-and-mortar`
 3. **SPIFF / sales-rep incentive** → `non_included` reason `spiff`
-3a. **RSA / Retail Sales Associate incentive** → `non_included` reason `rsa`
+3a. **RSA / Retail Sales Associate incentive** → `rsa_kit_rows` or
+    `rsa_nlp_rows` (NOT `non_included`; v0.3.0 routing — see
+    `reference/page-classification.md#3a`)
+3b. **New product launch / new arrivals** → `non_included` reason
+    `new-product` (skip the page entirely; v0.3.0)
 4. **Spend-to-earn / rebate** → `non_included` reason `spend-to-earn`
 4a. **POS Redemption / mail-in rebate** → `non_included` reason `pos-redemption`
 5. **Buy-More-Save-More / volume-tiered** → `non_included` reason `buy-more-save-more`
@@ -139,17 +147,36 @@ Use the matched vendor's reference file as the authority.
 - Extract paid SKUs and free SKUs (free = `FREE` marker in price column
   or under a `FREE GOOD` panel).
 - Pick the customer-facing price using the vendor's `price_label_priority`
-  in order; skip columns whose header is in `non_price_labels`.
+  in order; skip columns whose header is in `non_price_labels`. **First
+  non-empty tier wins** — do NOT drop a paid SKU if any later tier has a
+  value. See `conventions.md#price-label-fallback-rule`.
 - Extract dates: prefer `Online Execution` / `Promo Execution` /
   `Advertised Sell Through` per vendor; never use Buy-In windows.
 - Detect any **PCE / PCR / promo identifier** on the page and append it
   to `promo_name` in brackets: `"Deal Title [PCE 262776]"`.
-- Emit **Cartesian rows**: N paid × M free goods → N × M rows. Each
-  row has the same promo_name + dates; slot 1 = one paid SKU; slot 2 =
-  one free SKU. (Free goods have `price=0.0`, `credit=0.0`.)
-- **No paid SKU without a price.** If price extraction fails, drop that
-  SKU to `non_included` with reason `missing-price` rather than emitting
-  a zero-priced paid row.
+- **Decide row generation by title pattern**:
+  - If the promo title matches a "Get N" / "Choice of N" / "Choose N"
+    pattern with **N ≥ 2** and the free-good pool has M ≥ N items →
+    emit `C(M, N)` rows, each `(1 + N)` slots wide (anchor in slot 1,
+    chosen free goods sorted lexicographically in slots 2..N+1). See
+    `edge-cases.md#multi-pick-free-goods-get-n--choice-of-n`.
+  - Otherwise (N = 1 or no multi-pick title pattern) → emit standard
+    **Cartesian rows**: N paid × M free goods → N × M rows. Each row
+    has the same promo_name + dates; slot 1 = one paid SKU; slot 2 =
+    one free SKU. (Free goods have `price=0.0`, `credit=0.0`.)
+- **RSA promos**: if the page matches RSA markers (see priority #3a),
+  emit the rows to `rsa_kit_rows` (kit-shaped) or `rsa_nlp_rows`
+  (single-SKU) instead of `promo_rows` / `nlp_rows`. Append `-RSA` to
+  the `Promo Name` cell. Populate `Item Credit N` with the RSA credit
+  amount when extractable (see `exclusion-markers.md#rsa_marker`).
+- **No paid SKU without a price.** If price extraction fails for ALL
+  tiers in `price_label_priority`, drop that SKU to `non_included` with
+  reason `missing-price` rather than emitting a zero-priced paid row.
+  - **Makita exception (v0.3.0)**: when the vendor is Makita and ALL
+    price tiers are blank or `N/A`, route the SKU to
+    `needs_pricing_rows` instead of `non_included`. The team fills in
+    pricing manually downstream. See
+    `reference/vendors/makita.md#missing-price-routing`.
 
 **NLP pages** (Step 4 case 7):
 - Run the SAME header extraction the kit path uses. The vendor's
@@ -167,7 +194,7 @@ Use the matched vendor's reference file as the authority.
   blank SKU if no SKUs were extractable). Set `Reason` to the case
   label and `Detail` to a short phrase echoing the marker text.
 
-### Step 6 — Write the four CSVs
+### Step 6 — Write the output CSVs
 
 When all pages have been processed, write:
 
@@ -176,6 +203,9 @@ When all pages have been processed, write:
 | `<Vendor>-<QN>-<YYYY>-Promo-List.csv` | `promo_rows` | `reference/output-csvs.md#promo_listcsv` |
 | `<Vendor>-<QN>-<YYYY>-Non-Included.csv` | `non_included` | `reference/output-csvs.md#non_includedcsv` |
 | `<Vendor>-<QN>-<YYYY>-NLP-Sheet.csv` | `nlp_rows` | `reference/output-csvs.md#nlp_sheetcsv` |
+| `<Vendor>-<QN>-<YYYY>-RSA-Kits.csv` | `rsa_kit_rows` | `reference/output-csvs.md#rsa-kitscsv` |
+| `<Vendor>-<QN>-<YYYY>-RSA-NLP.csv` | `rsa_nlp_rows` | `reference/output-csvs.md#rsa-nlpcsv` |
+| `<Vendor>-<QN>-<YYYY>-Needs-Pricing.csv` | `needs_pricing_rows` | `reference/output-csvs.md#needs-pricingcsv` (Makita only; emit header-only when empty for other vendors) |
 | `<Vendor>-<QN>-<YYYY>-Parser-Audit.csv` | `audit_counters` | `reference/output-csvs.md#parser_auditcsv` |
 
 Where `<Vendor>` is the display name (e.g. `Milwaukee`, `DeWalt`,
@@ -190,7 +220,11 @@ All four are written with:
 - **Empty cells**: empty string (NOT zero, NOT "None")
 
 Write the files using the Write tool. Even if a list is empty, emit the
-header-only file — Stage 2/3 of the app expect all four to exist.
+header-only file — Stage 2/3 of the app expect at least the original
+four (`Promo-List`, `Non-Included`, `NLP-Sheet`, `Parser-Audit`) to
+exist. The v0.3.0 additions (`RSA-Kits`, `RSA-NLP`, `Needs-Pricing`)
+are emitted header-only when no rows match — keeps file listings
+consistent across runs.
 
 ### Step 7 — Report
 
@@ -199,9 +233,12 @@ Print a short summary table for the user:
 ```
 ✅ Parsed: <deck-name>
 Vendor: <vendor-display>
-Pages: <total> (<kit> kit, <nlp> NLP, <excluded> excluded, <skip> skipped)
+Pages: <total> (<kit> kit, <nlp> NLP, <rsa> RSA, <excluded> excluded, <skip> skipped)
 Promo rows: <n>
 NLP rows: <n>
+RSA kit rows: <n>
+RSA NLP rows: <n>
+Needs-Pricing rows: <n>
 Non-included: <n>
 Output: <output-dir>/
 
@@ -209,6 +246,9 @@ Files:
 - <Vendor>-<QN>-<YYYY>-Promo-List.csv (<n> rows)
 - <Vendor>-<QN>-<YYYY>-Non-Included.csv (<n> rows)
 - <Vendor>-<QN>-<YYYY>-NLP-Sheet.csv (<n> rows)
+- <Vendor>-<QN>-<YYYY>-RSA-Kits.csv (<n> rows)
+- <Vendor>-<QN>-<YYYY>-RSA-NLP.csv (<n> rows)
+- <Vendor>-<QN>-<YYYY>-Needs-Pricing.csv (<n> rows)
 - <Vendor>-<QN>-<YYYY>-Parser-Audit.csv (1 row)
 ```
 
@@ -237,6 +277,9 @@ Every output file is prefixed with three segments joined by hyphens:
 | promo_list | `Promo-List` |
 | non_included | `Non-Included` |
 | nlp_sheet | `NLP-Sheet` |
+| rsa_kits | `RSA-Kits` |
+| rsa_nlp | `RSA-NLP` |
+| needs_pricing | `Needs-Pricing` |
 | parser_audit | `Parser-Audit` |
 
 **Full examples:**
@@ -274,9 +317,19 @@ GearWrench-Q1-2027-Parser-Audit.csv
 - **Cartesian row generation**: a deal with N paid × M free emits N × M
   rows. This is intentional — it replaces a downstream macro. Do NOT
   emit max(N,M) rows.
+- **"Get N" / "Choice of N" combinations (v0.3.0)**: when the title
+  signals customer-choice of N ≥ 2 free goods from a pool of M, emit
+  `C(M, N)` rows instead of M rows. Each row has anchor + N chosen
+  free-good SKUs (slot 1 + slots 2..N+1). See `edge-cases.md`.
+- **Price label fallback**: when iterating a vendor's
+  `price_label_priority`, **first non-empty tier wins**. A paid SKU
+  must NOT be dropped if any later tier has a value. Drop to
+  `non_included` reason `missing-price` only if ALL tiers are empty.
+  (Makita has an override — see vendor file.)
 - **No paid SKU without a price**: drop to `non_included` reason
   `missing-price` rather than emit `0.00`. The ONLY zero-priced rows
-  in `promo_list.csv` are explicit free goods.
+  in `promo_list.csv` are explicit free goods. (Makita exception:
+  route to `Needs-Pricing.csv` instead.)
 - **All `Item Credit N` columns are emitted as blank/empty** unless
   the deck explicitly carries credit values (rare). The downstream NS
   importer fills credits.

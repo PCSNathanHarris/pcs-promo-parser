@@ -90,9 +90,13 @@ Source: `kb/deck_parser/audit.py::write_non_included` / `NON_INCLUDED_HEADERS`
 | `promo-code-only` | Page IS a coupon code (use code XYZ at checkout) |
 | `arp` | Authorized Retailer Program — channel-restricted, not for general online |
 | `killed` | Strikethrough on the SKU itself (deal cancelled) |
-| `missing-price` | Paid SKU detected but no extractable price |
+| `missing-price` | Paid SKU detected but no extractable price (non-Makita; Makita routes to `Needs-Pricing.csv` instead) |
 | `image-only-free-good` | Free SKU visible only in image, no row in price table |
 | `strikethrough` | SKU was struck out in the source — exclude |
+| `new-product` | Page or section flagged as a new product launch / new arrival — skipped entirely (v0.3.0) |
+
+**Retired in v0.3.0**: reason code `rsa` is no longer emitted. RSA pages
+now route to `RSA-Kits.csv` / `RSA-NLP.csv` (see schemas below).
 
 ### Sample rows
 
@@ -150,7 +154,7 @@ Source: skill-flavored variant. The original
 the rule parser (skipped-page-by-marker breakdown); the skill emits a
 simpler, AI-mode audit.
 
-**10 columns**, single row per parse run:
+**13 columns** (v0.3.0), single row per parse run:
 
 | # | Column | Source |
 |---|--------|--------|
@@ -159,18 +163,108 @@ simpler, AI-mode audit.
 | 3 | `Total Pages` | Page count of the deck |
 | 4 | `Kit Pages` | Pages classified as kit-promo |
 | 5 | `NLP Pages` | Pages routed to NLP Sheet (NLP_MARKER / SPECIAL_BUY_MARKER) |
-| 6 | `Excluded Pages` | Pages that landed in `non_included.csv` (sum of all non-NLP exclusion reasons) |
-| 7 | `Promo Rows` | Total rows in `promo_list.csv` |
-| 8 | `NLP Rows` | Total rows in `nlp_sheet.csv` |
-| 9 | `Non-Included Count` | Total rows in `non_included.csv` |
-| 10 | `Run At UTC` | ISO 8601 UTC timestamp (e.g. `2026-05-12T17:23:00Z`) |
+| 6 | `RSA Pages` | Pages classified as RSA (routed to RSA-Kits or RSA-NLP; v0.3.0) |
+| 7 | `Excluded Pages` | Pages that landed in `non_included.csv` (sum of all non-NLP, non-RSA exclusion reasons) |
+| 8 | `Promo Rows` | Total rows in `Promo-List.csv` |
+| 9 | `NLP Rows` | Total rows in `NLP-Sheet.csv` |
+| 10 | `RSA Kit Rows` | Total rows in `RSA-Kits.csv` (v0.3.0) |
+| 11 | `RSA NLP Rows` | Total rows in `RSA-NLP.csv` (v0.3.0) |
+| 12 | `Needs Pricing Rows` | Total rows in `Needs-Pricing.csv` (v0.3.0; Makita usually 0 for other vendors) |
+| 13 | `Non-Included Count` | Total rows in `Non-Included.csv` |
+| 14 | `Run At UTC` | ISO 8601 UTC timestamp (e.g. `2026-05-12T17:23:00Z`) |
 
 ### Sample row
 
 ```csv
-Deck,Vendor,Total Pages,Kit Pages,NLP Pages,Excluded Pages,Promo Rows,NLP Rows,Non-Included Count,Run At UTC
-Milwaukee_P2_2026.pdf,Milwaukee,98,28,60,8,412,287,15,2026-05-12T17:23:00Z
+Deck,Vendor,Total Pages,Kit Pages,NLP Pages,RSA Pages,Excluded Pages,Promo Rows,NLP Rows,RSA Kit Rows,RSA NLP Rows,Needs Pricing Rows,Non-Included Count,Run At UTC
+Milwaukee_P2_2026.pdf,Milwaukee,98,28,55,5,8,412,287,18,7,0,15,2026-05-12T17:23:00Z
 ```
+
+---
+
+## RSA-Kits.csv
+
+Source: v0.3.0 addition. Same 27-column schema as `Promo-List.csv` (see
+top of this file). Difference is **how the rows are populated**:
+
+- `Promo Name` ends with the literal suffix `-RSA`. Example:
+  `"M18 Drill RSA Reward [P-00xxxxx]-RSA"`.
+- `Item Credit N` columns carry the RSA credit amount for each slot
+  (the dollar amount the associate earns per unit sold). Format is
+  2-decimal fixed (`15.00`). Blank if credit amount was not
+  extractable from the page.
+- Otherwise, slot/qty/price conventions match `Promo-List.csv`.
+
+### Sample row
+
+```csv
+Promo Name,Start Date,End Date,Item SKU 1,Item Qty 1,Item Price 1,Item Credit 1,Item SKU 2,Item Qty 2,Item Price 2,Item Credit 2,Item SKU 3,Item Qty 3,Item Price 3,Item Credit 3,Item SKU 4,Item Qty 4,Item Price 4,Item Credit 4,Item SKU 5,Item Qty 5,Item Price 5,Item Credit 5,Item SKU 6,Item Qty 6,Item Price 6,Item Credit 6
+20V MAX RSA Reward Buy DCB205-2C [P-00xxxxx]-RSA,5/3/2026,8/3/2026,DCB205-2C,1,299.00,15.00,,,,,,,,,,,,,,,,,,,,
+```
+
+If `RSA-Kits.csv` has no rows for a given run, emit a header-only file.
+
+---
+
+## RSA-NLP.csv
+
+Source: v0.3.0 addition. Same 9-column schema as `NLP-Sheet.csv` plus
+one additional 10th column `Credit Amount` appended at the right.
+
+**10 columns**, in this exact order:
+
+| # | Column | Source / format |
+|---|--------|-----------------|
+| 1 | `Promo Name` | Deal title + bracketed PCE/PCR if present, **with `-RSA` suffix appended** (e.g. `"M18 Battery RSA Incentive [PCE 262776]-RSA"`) |
+| 2 | `SKU` | One SKU per row |
+| 3 | `Promo Price` | 2-decimal fixed price (or blank if not extractable) |
+| 4 | `Online Execution Start` | `M/D/YYYY` non-padded |
+| 5 | `Online Execution End` | `M/D/YYYY` non-padded |
+| 6 | `Vendor` | Display name |
+| 7 | `Page` | 1-indexed page number |
+| 8 | `Price Label` | Which header column was matched |
+| 9 | `Source Marker` | Always `rsa` for this file |
+| 10 | `Credit Amount` | 2-decimal fixed credit amount per unit (e.g. `15.00`); blank if not extractable |
+
+### Sample row
+
+```csv
+Promo Name,SKU,Promo Price,Online Execution Start,Online Execution End,Vendor,Page,Price Label,Source Marker,Credit Amount
+M18 Battery RSA Incentive [PCE 262776]-RSA,48-11-1850,99.00,5/4/2026,8/2/2026,Milwaukee,42,IMAP,rsa,5.00
+```
+
+Emit header-only if no RSA-NLP rows.
+
+---
+
+## Needs-Pricing.csv
+
+Source: v0.3.0 addition. Makita-only routing for paid SKUs where every
+tier of the vendor price priority is blank or `N/A`. See
+`reference/vendors/makita.md#missing-price-routing`.
+
+**8 columns**, in this exact order:
+
+| # | Column | Source / format |
+|---|--------|-----------------|
+| 1 | `Promo Name` | Deal title + bracketed promo identifier if present |
+| 2 | `Page` | 1-indexed page number |
+| 3 | `SKU` | The paid SKU missing pricing |
+| 4 | `Qty` | Integer, default `1` |
+| 5 | `Price Label Searched` | Pipe-separated list of every label tried, in priority order, e.g. `PMAP|MAP|HPP|Special Price|Promo Price` |
+| 6 | `Deal Text` | Short snippet of the deal title or marker text from the page (for human context) |
+| 7 | `Vendor` | Display name (always `Makita` under the v0.3.0 override) |
+| 8 | `Source Marker` | `missing-price` |
+
+### Sample row
+
+```csv
+Promo Name,Page,SKU,Qty,Price Label Searched,Deal Text,Vendor,Source Marker
+XGT Hammer Drill Promo [XGT Q2 1.03.0],14,GMH04PLX,1,PMAP|MAP|HPP|Special Price|Promo Price,XGT Hammer Drill Promo - price TBD,Makita,missing-price
+```
+
+Emit header-only for non-Makita vendors (file exists but contains only
+the header row).
 
 ---
 

@@ -35,15 +35,44 @@ blank otherwise).
 Sales-rep-only incentives (e.g. "$20 SPIFF for moving 5 units"). Not
 customer-facing.
 
-### 3a. RSA / Retail Sales Associate incentive → `non_included` reason `rsa`
+### 3a. RSA / Retail Sales Associate incentive → dedicated RSA outputs
 
-Pages dedicated exclusively to RSA (Retail Sales Associate) reward
-programs. Associate-facing incentives, not customer promos.
+**Routing change (v0.3.0)**: RSA pages no longer route to
+`non_included.csv`. They route to two new dedicated outputs:
+
+- Kit-shaped RSA promos (anchor + free good with a credit amount per
+  pairing) → `<Vendor>-<QN>-<YYYY>-RSA-Kits.csv` (same 27-col schema as
+  `promo_list.csv`; populate `Item Credit N`).
+- Single-SKU RSA promos (associate earns $N per unit, no pairing) →
+  `<Vendor>-<QN>-<YYYY>-RSA-NLP.csv` (same 9-col schema as
+  `nlp_sheet.csv` plus a 10th `Credit Amount` column appended at the
+  right).
+
+**Append `-RSA` to the `Promo Name` cell** on every RSA row so the
+suffix survives downstream merging. Example:
+`"M18 Drill RSA Reward [P-00xxxxx]"` → `"M18 Drill RSA Reward [P-00xxxxx]-RSA"`.
+
+**Mixed pages (customer promo + RSA section)**: emit the customer-facing
+kit rows to `promo_list.csv` AND the RSA rows to RSA-Kits/RSA-NLP. Both
+paths run; they're not mutually exclusive.
+
+See `exclusion-markers.md#rsa_marker` for credit-amount extraction
+patterns.
+
+### 3b. New product launch → `non_included` reason `new-product`
+
+Pages or sections highlighting **new product launches / new arrivals**
+are vendor announcements, not promos. Skip them entirely.
 
 Emit one `non_included` row per page (with the page's primary SKU if
-extractable, blank otherwise). If the page also contains a valid B1G1
-kit table, classify as a kit page (#9) and emit only a per-SKU
-`non_included` row for RSA-specific items that are not part of the kit.
+extractable, blank otherwise) with reason `new-product`. Do NOT emit
+kit, NLP, or RSA rows for these pages.
+
+See `exclusion-markers.md#new_product_marker` for phrase list.
+
+Distinguish carefully from **NLP** (`New Lower Price` / case #7) —
+that's a shelf-price drop and routes to the NLP Sheet, not exclusions.
+Match NLP first.
 
 ### 4. Spend-to-earn / rebate → `non_included` reason `spend-to-earn`
 

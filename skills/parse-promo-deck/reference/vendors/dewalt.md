@@ -44,6 +44,15 @@ When a code is on the page, append in brackets:
 regular MAPP, respectively). `PLATINUM` is dealer cost — NEVER a
 customer price.
 
+**Fallback rule (v0.3.0 — explicit)**: walk the list above in order and
+take the **first non-empty tier**. If `PMAPP` is missing, fall through
+to `MAPP`. If `MAPP` is also missing, try `Promo Price`. Continue to
+`IMAP`, then `MAP`. A paid SKU must **NOT** be dropped if any tier in
+the chain has a value — drop to `non_included` reason `missing-price`
+only when ALL five tiers are blank. See
+`reference/conventions.md#price-label-fallback-rule` for the worked
+example.
+
 ## Non-price labels (NEVER treat as price)
 
 - `Platinum` (dealer cost)
