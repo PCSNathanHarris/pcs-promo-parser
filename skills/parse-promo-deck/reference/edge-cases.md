@@ -32,6 +32,79 @@ This is critical for Milwaukee MX Fuel pages and DeWalt B1G1 promos.
 
 ---
 
+## Multi-pick free goods ("Get N" / "Choice of N")
+
+Some promos pair a single anchor (a starter kit or qualifying tool) with
+a **customer's choice of N free goods** from a pool of M options. The
+deal price covers the anchor PLUS the N picked free goods together.
+
+**Real-world example — DeWalt P-00209847**:
+> "20V MAX Bare Tool Bundle — Buy DCB205-2C Get 2 Bare Tools" @ $299
+
+Anchor = `DCB205-2C` (battery starter kit). Free-good pool = 13 bare
+tools. Customer picks **any 2** of the 13. The correct emit is **every
+combination** of 2 distinct free goods, paired with the anchor — `C(13, 2) = 78`
+rows, each with **three** SKU slots filled (anchor + tool_A + tool_B).
+
+**The trap**: easy to misread as a standard Cartesian (1 paid × 13 free
+= 13 two-slot rows). That undercounts every multi-tool combination the
+customer is actually entitled to.
+
+### Title-pattern detection (case-insensitive)
+
+Capture N from any of these patterns:
+
+- `\bGet\s+(\d+)\b` — "Get 2 Bare Tools", "Get 3 Free"
+- `\bChoice\s+of\s+(\d+)\b` — "Choice of 2"
+- `\bChoose\s+(\d+)\b` — "Choose 3 Tools"
+- `\b(\d+)\s+of\s+the\s+following\b` — "2 of the following"
+- `\bany\s+(\d+)\b\s+(?:of|free|bare)` — "any 2 free tools"
+
+If N is captured and N ≥ 2 and the free-good pool has M ≥ N items,
+switch from Cartesian to **combinations**.
+
+### Row layout
+
+- Slot 1 = paid anchor SKU (qty 1, price = deal price, credit blank).
+- Slots 2..(N+1) = the N chosen free goods, **sorted lexicographically**
+  by SKU within each row (stable diffs across re-parses). Each gets
+  qty 1, price `0.00`, credit blank.
+- Total slots filled = `1 + N`. Remaining slots emit 4 empty cells each.
+
+### Worked example — P-00209847 (anchor + Choose 2 of 13 free tools)
+
+13 tools: `DCD806B, DCF630B, DCF860B, DCF911B, DCG408B, DCH133B,
+DCS334B, DCS356B, DCS382B, DCS438B, DCS565B, DCW210B, DCW600B`.
+
+Emit `C(13, 2) = 78` rows. First row (alphabetically-sorted pair):
+
+```csv
+20V MAX Bare Tool Bundle Buy DCB205-2C Get 2 Bare Tools [P-00209847],5/3/2026,8/3/2026,DCB205-2C,1,299.00,,DCD806B,1,0.00,,DCF630B,1,0.00,,,,,,,,,,,,,
+```
+
+Last row:
+
+```csv
+20V MAX Bare Tool Bundle Buy DCB205-2C Get 2 Bare Tools [P-00209847],5/3/2026,8/3/2026,DCB205-2C,1,299.00,,DCS565B,1,0.00,,DCW600B,1,0.00,,,,,,,,,,,,,
+```
+
+No two rows share the same pair of free-good SKUs. The anchor SKU and
+its price are constant across all 78 rows.
+
+### N = 1 case
+
+If N = 1 (e.g. "Get 1 Free Tool" / standard B1G1), behavior is **unchanged**:
+fall back to the regular 1×M Cartesian rule (M two-slot rows). The
+combinations path only activates for N ≥ 2.
+
+### Multiple anchors with "Choose N"
+
+If the deck shows multiple anchors AND a "Choose N" pool, treat as
+nested: for each anchor, emit `C(M, N)` rows. Total rows = `(anchor count) × C(M, N)`.
+Anchor SKU goes in slot 1 of each row.
+
+---
+
 ## Multi-paid bundle (no free goods)
 
 GearWrench socket-set bundles, some Bosch / Makita combo kits, etc.

@@ -43,6 +43,36 @@ If no code is visible, the deal title alone is `promo_name`.
 4. `Special Price`
 5. `Promo Price`
 
+**Fallback rule (v0.3.0 — explicit)**: walk the list above in order and
+take the **first non-empty tier**. If `PMAP` is missing, fall through
+to `MAP`, then `HPP`, then `Special Price`, then `Promo Price`. A paid
+SKU must NOT be dropped if any tier has a value. See
+`reference/conventions.md#price-label-fallback-rule`.
+
+## Missing-price routing
+
+**Makita-specific override (v0.3.0)**: Makita decks regularly ship rows
+with blank or `N/A` prices because vendor pricing decks haven't been
+finalized yet. The team fills these in manually.
+
+When a paid SKU is detected on a Makita page but **every** tier in the
+priority list is blank or `N/A`:
+
+- Do **NOT** drop to `non_included.csv` with reason `missing-price`
+  (that's the rule for other vendors).
+- **Emit the row to `Makita-<QN>-<YYYY>-Needs-Pricing.csv`** with the
+  schema documented at `reference/output-csvs.md#needs-pricingcsv`.
+- The team uses this file as a worklist — they fill in the missing
+  pricing and merge those rows into the main promo list manually.
+
+This override only fires when ALL tiers are empty. If even one tier
+(e.g. `MAP`) has a value, follow the fallback rule and emit to
+`promo_list.csv` normally.
+
+For all other vendors (DeWalt, Milwaukee, Bosch, EGO, Flex, GearWrench,
+Crescent), the standard `non_included` reason `missing-price` routing
+still applies.
+
 ## Non-price labels (CRITICAL — NEVER treat as price)
 
 - **`Dealer`** — wholesale cost

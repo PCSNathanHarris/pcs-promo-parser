@@ -110,11 +110,46 @@ sold as one bundled price), put all paid SKUs in slots of a SINGLE row
 
 ---
 
+## Price label fallback rule
+
+Each vendor reference file lists a **`price_label_priority`** — an
+ordered set of price-column header tokens (e.g. for DeWalt: `PMAPP →
+MAPP → Promo Price → IMAP → MAP`). When extracting a customer-facing
+price for a paid SKU:
+
+1. Walk the priority list **in order**.
+2. The **first non-empty match wins**. Take the value from that column
+   for the row.
+3. A paid SKU may **NOT** be dropped if ANY tier in the priority chain
+   has a value. Only drop to `non_included` reason `missing-price` when
+   **every** tier is blank, `N/A`, or otherwise unextractable.
+
+**Worked example — DeWalt SKU with PMAPP missing**:
+
+```
+SKU       PLATINUM   PMAPP      MAPP    Promo Price
+DCS438B   159.00     (blank)    229.00  229.00
+```
+
+PMAPP is the highest-priority tier but it's blank. The fallback rule
+requires checking MAPP next, which has `229.00`. Emit the row with
+`Item Price = 229.00`. Do **not** drop the SKU to `non_included` — a
+later tier had data.
+
+**Vendor-specific override**: Makita routes the "all tiers empty" case
+to `Needs-Pricing.csv` instead of `non_included` — see
+`reference/vendors/makita.md#missing-price-routing`. All other vendors
+follow the standard drop-to-`non_included` rule.
+
+---
+
 ## "No paid SKU without a price" rule
 
 If you can identify a paid SKU on a kit page but cannot extract a price
-for it (header column missing, OCR failure, value not numeric, etc.),
-**drop that SKU to `non_included.csv` with reason `missing-price`**.
+for it from ANY tier in `price_label_priority` (every column blank,
+OCR failure across all tiers, etc.), **drop that SKU to
+`non_included.csv` with reason `missing-price`** (or to Makita's
+`Needs-Pricing.csv` per the override above).
 
 Do NOT emit a `0.00` priced paid row — the only zero-priced rows in
 `promo_list.csv` are explicit free goods (e.g. those tagged `FREE` in
