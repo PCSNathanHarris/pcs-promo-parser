@@ -1,10 +1,4 @@
-# PCS Tools Plugin Marketplace
-
-Two Claude Code plugins for the PCS Kit Builder and monthly MAP pricing workflows.
-
----
-
-## pcs-promo-parser
+# PCS Promo Parser
 
 Parses vendor promotional decks into the four Stage 1 CSVs for the PCS Kit Builder pipeline.
 
@@ -26,19 +20,6 @@ Handles: brick-and-mortar, SPIFF, RSA, spend-to-earn, POS Redemption, BMSM, prom
 - `<Vendor>-<Q#>-<YYYY>-RSA-NLP.csv` — RSA NLP/price-drop promos with credit amounts
 - `<Vendor>-<Q#>-<YYYY>-Needs-Pricing.csv` — Makita rows missing price (for manual fill-in)
 - `<Vendor>-<Q#>-<YYYY>-Parser-Audit.csv` — Run summary counts
-
----
-
-## pcs-map-updater
-
-Merges a vendor MAP pricing sheet with a NetSuite ERP export, flags exceptions (missing ERP match, MAP below purchase price, promo MAP below purchase price, keep-price review), and exports a review-ready Excel workbook.
-
-**Skill:** `/map-price-update`
-**Inputs:** Manufacturer MAP sheet (CSV/XLS/XLSX) + NetSuite ERP export (CSV/XLS/XLSX)
-**Output:** Excel workbook with MAP Update Review, Exceptions, All Manufacturer Rows, and Summary sheets.
-**Source:** `plugins/map-price-updater/`
-
----
 
 ## Team Installation
 See [docs/Team-Install-SOP.md](docs/Team-Install-SOP.md) for full step-by-step setup instructions.
